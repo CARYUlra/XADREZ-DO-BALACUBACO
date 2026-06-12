@@ -2,9 +2,6 @@
 
 > *"O xadrez é a ginástica da inteligência."* — Johann Wolfgang von Goethe
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-em%20desenvolvimento-orange.svg)]()
-
 ---
 
 ## 📑 Índice
