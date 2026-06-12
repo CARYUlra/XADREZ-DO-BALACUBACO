@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo de Xadrez Completo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #2c2c2c;
+            color: #fff;
+            margin-top: 40px;
+            position: relative;
+        }
+
+        h1 { margin-bottom: 5px; }
+
+        #status {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            font-weight: bold;
+            color: #4caf50;
+        }
+
+        .check-alert {
+            color: #ff5252 !important;
+        }
+
+        #board {
+            display: grid;
+            grid-template-columns: repeat(8, 70px);
+            grid-template-rows: repeat(8, 70px);
+            border: 4px solid #4a3625;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+            position: relative;
+        }
+
+        .square {
+            width: 70px;
+            height: 70px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 55px;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+        }
+
+        .light { background-color: #f0d9b5; }
+        .dark { background-color: #b58863; }
+
+        .piece-white {
+            color: #ffffff;
+            text-shadow: 
+                -2px -2px 0 #000,  
+                 2px -2px 0 #000,
+                -2px  2px 0 #000,
+                 2px  2px 0 #000,
+                 0px  4px 4px rgba(0,0,0,0.6);
+        }
+
+        .piece-black {
+            color: #000000;
+            text-shadow: 0px 4px 4px rgba(0,0,0,0.6);
+        }
+
+        .selected {
+            background-color: #7b61ff !important;
+        }
+
+        .highlight::after {
+            content: '';
+            width: 25px;
+            height: 25px;
+            background-color: rgba(0, 0, 0, 0.3);
+            border-radius: 50%;
+            position: absolute;
+        }
+
+        .highlight-capture {
+            background-color: rgba(255, 82, 82, 0.6) !important;
+        }
+
+        /* --- Estilos do Menu de Promoção --- */
+        #promotion-modal {
+            display: none; /* Escondido por padrão */
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #f0d9b5;
+            padding: 20px;
+            border-radius: 10px;
+            border: 4px solid #4a3625;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            z-index: 100;
+            text-align: center;
+            color: #000;
+        }
+
+        #promotion-modal h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+
+        .promo-options {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .promo-btn {
+            font-size: 40px;
+            width: 60px;
+            height: 60px;
+            cursor: pointer;
+            background-color: #fff;
+            border: 2px solid #000;
+            border-radius: 5px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: background-color 0.2s;
+        }
+
+        .promo-btn:hover {
+            background-color: #7b61ff;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Xadrez Avançado</h1>
+    <div id="status">Vez das Brancas</div>
+    <div id="board"></div>
+
+    <div id="promotion-modal">
+        <h3>Escolha a promoção:</h3>
+        <div class="promo-options">
+            <button class="promo-btn piece-black" onclick="promotePiece('q')">♛</button>
+            <button class="promo-btn piece-black" onclick="promotePiece('r')">♜</button>
+            <button class="promo-btn piece-black" onclick="promotePiece('b')">♝</button>
+            <button class="promo-btn piece-black" onclick="promotePiece('n')">♞</button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    
+    <script>
+        const game = new Chess();
+        const boardEl = document.getElementById('board');
+        const statusEl = document.getElementById('status');
+        const promotionModal = document.getElementById('promotion-modal');
+        
+        let selectedSquare = null;
+        let validMoves = [];
+        let pendingPromotionMove = null; // Variável para segurar a jogada enquanto escolhe a peça
+
+        const piecesMap = {
+            'w': {'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 'q': '♛', 'k': '♚'},
+            'b': {'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 'q': '♛', 'k': '♚'}
+        };
+
+        function createBoard() {
+            boardEl.innerHTML = '';
+            for (let row = 0; row < 8; row++) {
+                for (let col = 0; col < 8; col++) {
+                    const squareId = String.fromCharCode('a'.charCodeAt(0) + col) + (8 - row);
+                    
+                    const squareEl = document.createElement('div');
+                    squareEl.classList.add('square');
+                    squareEl.classList.add((row + col) % 2 === 0 ? 'light' : 'dark');
+                    squareEl.id = squareId;
+                    
+                    squareEl.addEventListener('click', () => handleSquareClick(squareId));
+                    
+                    boardEl.appendChild(squareEl);
+                }
+            }
+            updateBoard();
+        }
+
+        function handleSquareClick(squareId) {
+            // Se o jogo acabou ou se está esperando escolher a promoção, ignora cliques no tabuleiro
+            if (game.game_over() || pendingPromotionMove) return;
+
+            const piece = game.get(squareId);
+            // Procura o movimento válido para a casa clicada
+            const isMove = validMoves.find(m => m.to === squareId);
+
+            if (selectedSquare && isMove) {
+                // Intercepta se for uma jogada de promoção (a biblioteca usa a flag 'p' para promotion)
+                if (isMove.flags.includes('p')) {
+                    pendingPromotionMove = { from: selectedSquare, to: squareId };
+                    
+                    // Pinta temporariamente os botões da cor de quem está jogando
+                    const turnColor = game.turn();
+                    document.querySelectorAll('.promo-btn').forEach(btn => {
+                        btn.className = `promo-btn ${turnColor === 'w' ? 'piece-white' : 'piece-black'}`;
+                        btn.style.backgroundColor = turnColor === 'w' ? '#333' : '#fff'; // Ajusta fundo para dar contraste
+                    });
+
+                    // Mostra o modal
+                    promotionModal.style.display = 'block';
+                    return; 
+                }
+
+                // Jogada normal (não promoção)
+                game.move({
+                    from: selectedSquare,
+                    to: squareId
+                });
+                
+                selectedSquare = null;
+                validMoves = [];
+                updateBoard();
+                return;
+            }
+
+            if (piece && piece.color === game.turn()) {
+                selectedSquare = squareId;
+                validMoves = game.moves({ square: squareId, verbose: true });
+                updateBoard();
+            } 
+            else {
+                selectedSquare = null;
+                validMoves = [];
+                updateBoard();
+            }
+        }
+
+        // Função chamada pelos botões do menu de promoção
+        function promotePiece(pieceType) {
+            if (pendingPromotionMove) {
+                // Executa a jogada informando a peça escolhida (q, r, b ou n)
+                game.move({
+                    from: pendingPromotionMove.from,
+                    to: pendingPromotionMove.to,
+                    promotion: pieceType
+                });
+                
+                // Reseta variáveis e esconde o menu
+                pendingPromotionMove = null;
+                promotionModal.style.display = 'none';
+                selectedSquare = null;
+                validMoves = [];
+                
+                updateBoard();
+            }
+        }
+
+        function updateBoard() {
+            document.querySelectorAll('.square').forEach(sq => {
+                sq.innerText = '';
+                sq.classList.remove('selected', 'highlight', 'highlight-capture', 'piece-white', 'piece-black');
+                
+                const squareId = sq.id;
+                const piece = game.get(squareId);
+                
+                if (piece) {
+                    sq.innerText = piecesMap[piece.color][piece.type];
+                    sq.classList.add(piece.color === 'w' ? 'piece-white' : 'piece-black');
+                }
+
+                if (squareId === selectedSquare) {
+                    sq.classList.add('selected');
+                }
+
+                const move = validMoves.find(m => m.to === squareId);
+                if (move) {
+                    if (game.get(squareId)) {
+                        sq.classList.add('highlight-capture'); 
+                    } else {
+                        sq.classList.add('highlight'); 
+                    }
+                }
+            });
+
+            updateStatus();
+        }
+
+        function updateStatus() {
+            let status = '';
+            let moveColor = game.turn() === 'w' ? 'Brancas' : 'Pretas';
+
+            statusEl.classList.remove('check-alert');
+
+            if (game.in_checkmate()) {
+                status = `Jogo acabou! As ${moveColor} estão em XEQUE-MATE.`;
+                statusEl.classList.add('check-alert');
+                setTimeout(() => alert(`Xeque-Mate! As ${game.turn() === 'w' ? 'Pretas' : 'Brancas'} venceram!`), 100);
+            } 
+            else if (game.in_draw() || game.in_stalemate() || game.in_threefold_repetition()) {
+                status = 'Jogo acabou! EMPATE.';
+            } 
+            else {
+                status = `Vez das ${moveColor}`;
+                if (game.in_check()) {
+                    status += ' (XEQUE!)';
+                    statusEl.classList.add('check-alert');
+                }
+            }
+
+            statusEl.innerText = status;
+        }
+
+        createBoard();
+    </script>
+</body>
+</html>
